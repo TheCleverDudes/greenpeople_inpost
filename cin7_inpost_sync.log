@@ -1,0 +1,70 @@
+2025-07-25 14:22:42,225 - INFO - Starting initial sync...
+2025-07-25 14:22:44,843 - INFO - Found 0 orders in initial sync period
+2025-07-25 14:22:44,846 - INFO - Initial sync complete. Processed 0 orders.
+2025-07-25 14:22:44,846 - INFO - Starting continuous polling for new orders...
+2025-07-25 14:22:44,847 - INFO - Checking for new orders between 2025-07-25 11:22:44.847249 and 2025-07-25 12:22:44.847249
+2025-07-25 14:22:46,007 - INFO - No new orders found
+2025-07-25 15:07:27,006 - INFO - Starting initial sync...
+2025-07-25 15:07:29,561 - INFO - Found 0 orders in initial sync period
+2025-07-25 15:07:29,568 - INFO - Initial sync complete. Processed 0 orders.
+2025-07-25 15:07:29,568 - INFO - Starting continuous polling for new orders...
+2025-07-25 15:07:29,568 - INFO - Checking for new orders between 2025-07-25 12:07:29.568618 and 2025-07-25 13:07:29.568618
+2025-07-25 15:07:31,568 - INFO - No new orders found
+2025-07-25 15:12:31,562 - INFO - Checking for new orders between 2025-07-25 12:12:31.562575 and 2025-07-25 13:12:31.562575
+2025-07-25 15:12:33,279 - INFO - No new orders found
+2025-07-25 15:17:33,274 - INFO - Checking for new orders between 2025-07-25 12:17:33.274541 and 2025-07-25 13:17:33.274541
+2025-07-25 15:17:34,828 - INFO - No new orders found
+2025-07-25 15:22:34,823 - INFO - Checking for new orders between 2025-07-25 12:22:34.823342 and 2025-07-25 13:22:34.823342
+2025-07-25 15:22:37,276 - INFO - No new orders found
+2025-07-28 09:09:43,898 - INFO - Starting initial sync...
+2025-07-28 09:09:46,428 - INFO - Found 0 orders in initial sync period
+2025-07-28 09:09:46,431 - INFO - Initial sync complete. Processed 0 orders.
+2025-07-28 09:09:46,432 - INFO - Starting continuous polling for new orders...
+2025-07-28 09:09:46,432 - INFO - Checking for new orders between 2025-07-28 06:09:46.432460 and 2025-07-28 07:09:46.432460
+2025-07-28 09:09:48,416 - INFO - No new orders found
+2025-07-28 09:14:48,417 - INFO - Checking for new orders between 2025-07-28 06:14:48.417708 and 2025-07-28 07:14:48.417708
+2025-07-28 09:14:50,964 - INFO - No new orders found
+2025-07-28 09:19:50,965 - INFO - Checking for new orders between 2025-07-28 06:19:50.965510 and 2025-07-28 07:19:50.965510
+2025-07-28 09:19:52,495 - INFO - No new orders found
+2025-07-28 09:24:52,496 - INFO - Checking for new orders between 2025-07-28 06:24:52.496376 and 2025-07-28 07:24:52.496376
+2025-07-28 09:24:58,067 - INFO - No new orders found
+2025-07-28 09:29:58,068 - INFO - Checking for new orders between 2025-07-28 06:29:58.068115 and 2025-07-28 07:29:58.068115
+2025-07-28 09:30:00,603 - INFO - No new orders found
+2025-07-28 09:35:00,604 - INFO - Checking for new orders between 2025-07-28 06:35:00.603972 and 2025-07-28 07:35:00.603972
+2025-07-28 09:35:03,191 - INFO - No new orders found
+2025-07-28 09:40:03,192 - INFO - Checking for new orders between 2025-07-28 06:40:03.192836 and 2025-07-28 07:40:03.192836
+2025-07-28 09:40:05,912 - INFO - No new orders found
+2025-07-28 12:47:35,763 - INFO - Starting initial sync...
+2025-07-28 12:47:38,230 - INFO - Found 0 orders in initial sync period
+2025-07-28 12:47:38,233 - INFO - Initial sync complete. Processed 0 orders.
+2025-07-28 12:47:38,233 - INFO - Starting continuous polling for new orders...
+2025-07-28 12:47:38,233 - INFO - Checking for new orders between 2025-07-28 09:47:38.233910 and 2025-07-28 10:47:38.233910
+2025-07-28 12:47:40,598 - INFO - No new orders found
+2025-07-28 13:48:11,286 - INFO - Starting initial sync...
+2025-07-28 13:48:12,891 - INFO - Found 0 orders in initial sync period
+2025-07-28 13:48:12,894 - INFO - Initial sync complete. Processed 0 orders.
+2025-07-28 13:48:12,895 - INFO - Starting continuous polling for new orders...
+2025-07-28 13:48:12,895 - INFO - Checking for new orders between 2025-07-28 10:48:12.895409 and 2025-07-28 11:48:12.895409
+2025-07-28 13:48:14,089 - INFO - No new orders found
+2025-07-28 14:49:00,003 - INFO - Starting initial sync...
+2025-07-28 14:49:03,329 - INFO - Found 0 orders in initial sync period
+2025-07-28 14:49:03,332 - INFO - Initial sync complete. Processed 0 orders.
+2025-07-28 14:49:03,332 - INFO - Starting continuous polling for new orders...
+2025-07-28 14:49:03,332 - INFO - Checking for new orders between 2025-07-28 11:49:03.332702 and 2025-07-28 12:49:03.332702
+2025-07-28 14:49:04,543 - INFO - No new orders found
+2025-07-28 15:10:36,794 - INFO - Starting initial sync...
+2025-07-28 15:10:36,795 - INFO - Looking for orders between 2025-07-25 13:10:36.795271+00:00 and 2025-07-28 13:10:36.795271+00:00
+2025-07-28 15:10:38,723 - INFO - Total orders fetched: 3
+2025-07-28 15:14:25,080 - INFO - Starting initial sync...
+2025-07-28 15:14:25,081 - INFO - Looking for orders between 2025-07-25 13:14:25.081184+00:00 and 2025-07-28 13:14:25.081184+00:00
+2025-07-28 15:14:26,283 - INFO - Total orders fetched: 3
+2025-07-28 15:18:37,672 - INFO - Starting initial sync...
+2025-07-28 15:18:37,672 - INFO - Looking for orders between 2025-07-25 13:18:37.672937+00:00 and 2025-07-28 13:18:37.672937+00:00
+2025-07-28 15:18:38,858 - INFO - Total orders fetched: 3
+2025-07-28 15:18:38,858 - INFO - Sample order numbers: ['UNKNOWN', 'UNKNOWN', 'UNKNOWN']
+2025-07-28 15:18:38,860 - INFO - Found 3 orders in initial sync period
+2025-07-28 15:20:15,359 - INFO - Starting initial sync...
+2025-07-28 15:20:15,360 - INFO - Looking for orders between 2025-07-25 13:20:15.360090+00:00 and 2025-07-28 13:20:15.360090+00:00
+2025-07-28 15:20:17,430 - INFO - Total orders fetched: 3
+2025-07-28 15:20:17,430 - INFO - Sample order numbers: ['UNKNOWN', 'UNKNOWN', 'UNKNOWN']
+2025-07-28 15:20:17,432 - INFO - Found 3 orders in initial sync period

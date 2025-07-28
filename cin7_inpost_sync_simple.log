@@ -1,0 +1,7 @@
+2025-07-28 18:17:13,490 - INFO - Sample order numbers: ['MISSING_SO_NUMBER', 'MISSING_SO_NUMBER', 'MISSING_SO_NUMBER']
+2025-07-28 18:17:16,682 - INFO - Order already exists in InPost. Message: Order actually exists: 2396305/LGRE/25
+2025-07-28 18:17:16,684 - INFO - InPost order for Cin7 MISSING_SO_b0494ab0 already exists. Details: Order actually exists: 2396305/LGRE/25
+2025-07-28 18:17:18,856 - INFO - Order already exists in InPost. Message: Order actually exists: 2420495/LGRE/25
+2025-07-28 18:17:18,858 - INFO - InPost order for Cin7 MISSING_SO_0e6648af already exists. Details: Order actually exists: 2420495/LGRE/25
+2025-07-28 18:17:21,071 - INFO - Order already exists in InPost. Message: Order actually exists: 2536523/LGRE/25
+2025-07-28 18:17:21,073 - INFO - InPost order for Cin7 MISSING_SO_45586fd2 already exists. Details: Order actually exists: 2536523/LGRE/25

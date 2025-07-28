@@ -66,7 +66,7 @@ def fetch_cin7_orders(start_date, end_date):
     all_orders = []
     page = 1
     limit = 50
-    logger.info(f"🔍 Fetching orders updated between {start_date} and {end_date}...")
+    logger.info(f"Fetching orders updated between {start_date} and {end_date}...")
     while True:
         params = {
             "Page": page,
@@ -83,16 +83,16 @@ def fetch_cin7_orders(start_date, end_date):
             if not orders:
                 break  # No more orders
             all_orders.extend(orders)
-            logger.info(f"📄 Fetched {len(orders)} orders on page {page}")
+            logger.info(f"Fetched {len(orders)} orders on page {page}")
             if len(orders) < limit:
                 break  # Last page
             page += 1
         except Exception as e:
-            logger.error(f"❌ Failed to fetch orders (page {page}): {e}")
+            logger.error(f"Failed to fetch orders (page {page}): {e}")
             if hasattr(e, 'response') and e.response is not None:
                 logger.error(f"Response text: {e.response.text}")
             break
-    logger.info(f"✅ Total orders fetched: {len(all_orders)}")
+    logger.info(f"Total orders fetched: {len(all_orders)}")
     if all_orders:
         # Use .get() and a fallback to prevent KeyError
         sample_order_numbers = [o.get('SaleOrderNumber', 'MISSING_SO_NUMBER') for o in all_orders[:3]]
@@ -112,7 +112,7 @@ def get_order_details(sale_id):
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        logger.error(f"❌ Failed to get details for {sale_id}: {e}")
+        logger.error(f"Failed to get details for {sale_id}: {e}")
         if hasattr(e, 'response') and e.response is not None:
              logger.error(f"Response text: {e.response.text}")
         return None
@@ -213,12 +213,12 @@ def create_inpost_order(payload):
         response.raise_for_status() # Raise for other 4xx/5xx
         return response.json()
     except requests.exceptions.RequestException as e:
-        logger.error(f"❌ InPost creation failed: {e}")
+        logger.error(f"InPost creation failed: {e}")
         if hasattr(e, 'response') and e.response is not None:
              logger.error(f"Response text: {e.response.text}")
         return False
     except Exception as e:
-        logger.error(f"💥 Unexpected error during InPost creation: {e}")
+        logger.error(f"Unexpected error during InPost creation: {e}")
         return False
 
 # === Step 5: Get InPost Order Details (for status check) ===
@@ -231,7 +231,7 @@ def get_inpost_order_details(inpost_order_id):
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        logger.error(f"❌ Failed to get InPost order details for {inpost_order_id}: {e}")
+        logger.error(f"Failed to get InPost order details for {inpost_order_id}: {e}")
         if hasattr(e, 'response') and e.response is not None:
              logger.error(f"Response text: {e.response.text}")
         return None
@@ -245,7 +245,7 @@ def authorize_fulfillment(cin7_order_id, task_id, lines, tracking_number, tracki
     }
     base_url = "https://inventory.dearsystems.com/ExternalApi/v2"
 
-    # ✅ Authorize Pick
+    # Authorize Pick
     pick_payload = {
         "TaskID": task_id,
         "Status": "AUTHORISED",
@@ -254,14 +254,14 @@ def authorize_fulfillment(cin7_order_id, task_id, lines, tracking_number, tracki
     try:
         pick_response = requests.post(f"{base_url}/sale/fulfilment/pick", headers=headers, json=pick_payload)
         pick_response.raise_for_status()
-        logger.info(f"✅ Pick authorized for {cin7_order_id}")
+        logger.info(f"Pick authorized for {cin7_order_id}")
     except Exception as e:
-        logger.error(f"❌ Failed to authorize pick for {cin7_order_id}: {e}")
+        logger.error(f"Failed to authorize pick for {cin7_order_id}: {e}")
         if hasattr(e, 'response') and e.response is not None:
              logger.error(f"Response text: {e.response.text}")
         return False
 
-    # ✅ Authorize Pack
+    # Authorize Pack
     pack_lines = [{**line, "Box": DEFAULT_BOX} for line in lines]
     pack_payload = {
         "TaskID": task_id,
@@ -271,14 +271,14 @@ def authorize_fulfillment(cin7_order_id, task_id, lines, tracking_number, tracki
     try:
         pack_response = requests.post(f"{base_url}/sale/fulfilment/pack", headers=headers, json=pack_payload)
         pack_response.raise_for_status()
-        logger.info(f"✅ Pack authorized for {cin7_order_id}")
+        logger.info(f"Pack authorized for {cin7_order_id}")
     except Exception as e:
-        logger.error(f"❌ Failed to authorize pack for {cin7_order_id}: {e}")
+        logger.error(f"Failed to authorize pack for {cin7_order_id}: {e}")
         if hasattr(e, 'response') and e.response is not None:
              logger.error(f"Response text: {e.response.text}")
         return False
 
-    # ✅ Authorize Ship
+    # Authorize Ship
     ship_payload = {
         "TaskID": task_id,
         "Status": "AUTHORISED",
@@ -309,14 +309,14 @@ def authorize_fulfillment(cin7_order_id, task_id, lines, tracking_number, tracki
     try:
         ship_response = requests.post(f"{base_url}/sale/fulfilment/ship", headers=headers, json=ship_payload)
         ship_response.raise_for_status()
-        logger.info(f"✅ Ship authorized for {cin7_order_id}")
+        logger.info(f"Ship authorized for {cin7_order_id}")
     except Exception as e:
-        logger.error(f"❌ Failed to authorize ship for {cin7_order_id}: {e}")
+        logger.error(f"Failed to authorize ship for {cin7_order_id}: {e}")
         if hasattr(e, 'response') and e.response is not None:
              logger.error(f"Response text: {e.response.text}")
         return False
 
-    # ✅ Update tracking in Cin7 (PUT request)
+    # Update tracking in Cin7 (PUT request)
     update_tracking_url = f"{base_url}/sale/{cin7_order_id}/fulfilment/ship"
     track_payload = {
         "trackingNumber": tracking_number,
@@ -326,9 +326,9 @@ def authorize_fulfillment(cin7_order_id, task_id, lines, tracking_number, tracki
         # Use PUT for updating tracking
         track_response = requests.put(update_tracking_url, headers=headers, json=track_payload)
         track_response.raise_for_status()
-        logger.info(f"✅ Tracking updated for {cin7_order_id}")
+        logger.info(f"Tracking updated for {cin7_order_id}")
     except Exception as e:
-        logger.warning(f"⚠️ Warning: Failed to update tracking number for {cin7_order_id}: {e}")
+        logger.warning(f"Warning: Failed to update tracking number for {cin7_order_id}: {e}")
         if hasattr(e, 'response') and e.response is not None:
              logger.warning(f"Response text: {e.response.text}")
         # Decide if this should fail the whole process or just log a warning
@@ -341,7 +341,7 @@ if __name__ == "__main__":
     # Step 1: Fetch all orders
     orders = fetch_cin7_orders(START_DATE, END_DATE)
     if not orders:
-        logger.info("📭 No orders to process.")
+        logger.info("No orders to process.")
         exit()
 
     success_count = 0
@@ -355,12 +355,12 @@ if __name__ == "__main__":
                  logger.warning(f"Skipping order, missing SaleID: {order}")
                  continue
 
-            logger.info(f"🚀 Processing order: {order_number} (SaleID: {sale_id})")
+            logger.info(f"Processing order: {order_number} (SaleID: {sale_id})")
 
             # Step 2: Get full order details
             order_details = get_order_details(sale_id)
             if not order_details or "Order" not in order_details:
-                logger.error(f"❌ Invalid or missing data for {order_number}")
+                logger.error(f"Invalid or missing data for {order_number}")
                 continue
 
             order_data = order_details["Order"]
@@ -382,25 +382,25 @@ if __name__ == "__main__":
                 # Optional Enhancement: Parse the message or query InPost GET /orders to get the ID.
                 # For now, treat as successful to prevent retry loop.
                 success_count += 1
-                logger.info(f"✅ Marked as processed (already exists): {order_number}")
+                logger.info(f"Marked as processed (already exists): {order_number}")
                 continue # Move to next order
 
             if not inpost_response:
-                logger.error(f"❌ Network error or unexpected issue creating order {order_number} in InPost")
+                logger.error(f"Network error or unexpected issue creating order {order_number} in InPost")
                 continue
 
             # Check if order was created successfully (original logic for 200 OK)
             if inpost_response.get("status", "").lower() != "ok":
-                logger.error(f"❌ Failed to create order {order_number} in InPost: {inpost_response.get('message', 'Unknown error')}")
+                logger.error(f"Failed to create order {order_number} in InPost: {inpost_response.get('message', 'Unknown error')}")
                 continue
 
             inpost_order_id = inpost_response["id"]
             tracking_number = inpost_response.get("trackingNumber", f"TEMP-{order_number}")
             tracking_url = inpost_response.get("trackingURL")
-            logger.info(f"✅ Created InPost order: {inpost_order_id} | Tracking: {tracking_number}")
+            logger.info(f"Created InPost order: {inpost_order_id} | Tracking: {tracking_number}")
 
             # --- NEW: Wait for InPost Order to be "Closed" (Y, P, D) ---
-            logger.info(f"⏳ Waiting for InPost order {inpost_order_id} to reach 'closed' status (Y/P/D)...")
+            logger.info(f"Waiting for InPost order {inpost_order_id} to reach 'closed' status (Y/P/D)...")
             max_checks = 12 # Check up to 12 times (e.g., 2 mins if interval is 10s)
             check_interval = 10 # seconds
             inpost_order_closed = False
@@ -417,14 +417,14 @@ if __name__ == "__main__":
                            tracking_number = inpost_order_details.get("trackingNumber", tracking_number) # Refresh if needed
                            tracking_url = inpost_order_details.get("trackingURL", tracking_url)
                            inpost_order_closed = True
-                           logger.info(f"✅ InPost order {inpost_order_id} is closed (status: {status}). Proceeding with fulfillment.")
+                           logger.info(f"InPost order {inpost_order_id} is closed (status: {status}). Proceeding with fulfillment.")
                       elif status in ["A", "DC", "X"]: # Canceled statuses
-                           logger.warning(f"⚠️ InPost order {inpost_order_id} was canceled (status: {status}). Skipping fulfillment.")
+                           logger.warning(f"InPost order {inpost_order_id} was canceled (status: {status}). Skipping fulfillment.")
                            break # Stop checking, don't fulfill
                  else:
-                      logger.warning(f"⚠️ Could not fetch InPost order details for {inpost_order_id} during status check {checks}. Retrying...")
+                      logger.warning(f"Could not fetch InPost order details for {inpost_order_id} during status check {checks}. Retrying...")
             if not inpost_order_closed:
-                 logger.warning(f"⚠️ InPost order {inpost_order_id} did not reach 'closed' status within the timeout period. Skipping fulfillment for now.")
+                 logger.warning(f"InPost order {inpost_order_id} did not reach 'closed' status within the timeout period. Skipping fulfillment for now.")
                  continue # Don't proceed with fulfillment if not closed
             # --- END OF NEW WAIT LOGIC ---
 
@@ -440,23 +440,23 @@ if __name__ == "__main__":
                         "Quantity": line["Quantity"]
                     })
             if not lines:
-                logger.warning(f"⚠️ No valid items to fulfill for {order_number}")
+                logger.warning(f"No valid items to fulfill for {order_number}")
                 continue
 
             # Step 7: Authorize Pick → Pack → Ship
             # Use the ID from the detailed order response as TaskID
             task_id = order_details.get("ID")
             if not task_id:
-                 logger.error(f"❌ Missing TaskID for Cin7 order {order_number}. Cannot authorize fulfillment.")
+                 logger.error(f"Missing TaskID for Cin7 order {order_number}. Cannot authorize fulfillment.")
                  continue
 
             if authorize_fulfillment(sale_id, task_id, lines, tracking_number, tracking_url, shipping):
                 success_count += 1
-                logger.info(f"✅ FULLY PROCESSED: {order_number}")
+                logger.info(f"FULLY PROCESSED: {order_number}")
             else:
-                logger.error(f"❌ Failed full fulfillment for {order_number}")
+                logger.error(f"Failed full fulfillment for {order_number}")
 
         except Exception as e:
-            logger.error(f"💥 Error processing order {order.get('SaleOrderNumber', 'UNKNOWN')}: {e}", exc_info=True)
+            logger.error(f"Error processing order {order.get('SaleOrderNumber', 'UNKNOWN')}: {e}", exc_info=True)
 
-    logger.info(f"🎉 Sync complete. Successfully processed {success_count}/{len(orders)} orders.")
+    logger.info(f"Sync complete. Successfully processed {success_count}/{len(orders)} orders.")

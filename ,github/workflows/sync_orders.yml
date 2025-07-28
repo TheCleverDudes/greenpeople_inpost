@@ -52,7 +52,7 @@ jobs:
         run: |
           complete_flow_inpost_core.py # Replace with your actual script name
 
-      # (Optional) Commit and push updated state files
+      # (Optional) Commit and push updated state files, dont try this yet
       # This preserves the processed_orders.json and synced_orders.json between runs
       - name: Commit and push updated state files
         run: |

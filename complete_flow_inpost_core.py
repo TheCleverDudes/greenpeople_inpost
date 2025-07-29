@@ -2,6 +2,10 @@ import requests
 import json
 from datetime import datetime, timedelta, timezone
 import logging
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -15,11 +19,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # === Cin7 Core (DEAR) API credentials ===
-CORE_ACCOUNT_ID = "3384f900-b8b1-41bc-8324-1e6000e897ec"
-CORE_APP_KEY = "c1bf7dbf-5365-9d50-95a1-960ee4455445"
+CORE_ACCOUNT_ID = os.getenv("CORE_ACCOUNT_ID")
+CORE_APP_KEY = os.getenv("CORE_APP_KEY")
 
 # === InPost API key ===
-INPOST_API_KEY = "da3f39f46c9f473d29cc8ec40a0ae787"
+INPOST_API_KEY = os.getenv("INPOST_API_KEY")
 
 # === Depot ID for InPost ===
 DEPOT_ID = "556239"

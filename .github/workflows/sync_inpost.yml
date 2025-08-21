@@ -2,7 +2,7 @@ name: Sync Cin7 Orders to InPost
 
 on:
   schedule:
-    - cron: '0 7,16 * * *'  # Runs at 09:00 and 18:00 SAST!
+    - cron: '0 */2 * * *'  # Runs every 2 hours
   workflow_dispatch:
 
 jobs:

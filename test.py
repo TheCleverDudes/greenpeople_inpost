@@ -10,7 +10,7 @@ CORE_APP_KEY = "c1bf7dbf-5365-9d50-95a1-960ee4455445"
 INPOST_API_KEY = "da3f39f46c9f473d29cc8ec40a0ae787"
 
 # === Replace with a valid SaleID ===
-SALE_ID = "d09b6c07-2883-4015-8eb1-5a7549054a56"
+SALE_ID = "9b15e51a-d1d2-4c03-8c4b-4f070a3dd41e"
 
 # === Step 1: Fetch sale order from Core ===
 core_url = f"https://inventory.dearsystems.com/ExternalApi/v2/sale?ID={SALE_ID}&CombineAdditionalCharges=true"

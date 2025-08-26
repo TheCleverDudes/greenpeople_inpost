@@ -68,3 +68,35 @@
 2025-07-28 15:20:17,430 - INFO - Total orders fetched: 3
 2025-07-28 15:20:17,430 - INFO - Sample order numbers: ['UNKNOWN', 'UNKNOWN', 'UNKNOWN']
 2025-07-28 15:20:17,432 - INFO - Found 3 orders in initial sync period
+2025-08-26 12:41:51,236 - INFO - Starting initial sync...
+2025-08-26 12:41:53,234 - INFO - Found 0 orders in initial sync period
+2025-08-26 12:41:53,238 - INFO - Initial sync complete. Processed 0 orders.
+2025-08-26 12:41:53,238 - INFO - Starting continuous polling for new orders...
+2025-08-26 12:41:53,238 - INFO - Checking for new orders between 2025-08-26 09:41:53.238571 and 2025-08-26 10:41:53.238571
+2025-08-26 12:41:54,443 - INFO - No new orders found
+2025-08-26 12:42:19,832 - INFO - Starting initial sync...
+2025-08-26 12:42:19,833 - INFO - Looking for orders between 2025-08-23 10:42:19.833122+00:00 and 2025-08-26 10:42:19.833122+00:00
+2025-08-26 12:42:23,217 - INFO - Total orders fetched: 58
+2025-08-26 12:49:41,106 - INFO - Starting initial sync...
+2025-08-26 12:49:41,107 - INFO - Looking for orders between 2025-08-23 10:49:41.107152+00:00 and 2025-08-26 10:49:41.107152+00:00
+2025-08-26 12:49:43,762 - INFO - Total orders fetched: 58
+2025-08-26 14:32:57,807 - INFO - Starting initial sync...
+2025-08-26 14:32:59,487 - INFO - Found 0 orders in initial sync period
+2025-08-26 14:32:59,489 - INFO - Initial sync complete. Processed 0 orders.
+2025-08-26 14:32:59,490 - INFO - Starting continuous polling for new orders...
+2025-08-26 14:32:59,490 - INFO - Checking for new orders between 2025-08-26 11:32:59.490395 and 2025-08-26 12:32:59.490395
+2025-08-26 14:33:00,812 - INFO - No new orders found
+2025-08-26 14:36:37,192 - INFO - Starting initial sync...
+2025-08-26 14:36:37,193 - INFO - Looking for orders between 2025-08-16 12:36:37.193002+00:00 and 2025-08-26 12:36:37.193002+00:00
+2025-08-26 14:36:43,690 - INFO - Total orders fetched: 202
+2025-08-26 14:37:26,635 - INFO - Starting initial sync...
+2025-08-26 14:37:26,635 - INFO - Looking for orders between 2025-08-16 12:37:26.635596+00:00 and 2025-08-26 12:37:26.635596+00:00
+2025-08-26 14:37:33,775 - INFO - Total orders fetched: 202
+2025-08-26 14:37:33,776 - INFO - Sample order numbers: ['SO-00145', 'SO-00146', 'SO-00262']
+2025-08-26 14:37:33,778 - INFO - Found 202 orders in initial sync period
+2025-08-26 14:37:46,484 - INFO - Starting initial sync...
+2025-08-26 14:37:46,484 - INFO - Looking for orders between 2025-08-16 12:37:46.484823+00:00 and 2025-08-26 12:37:46.484823+00:00
+2025-08-26 14:37:52,657 - INFO - Total orders fetched: 202
+2025-08-26 14:37:52,657 - INFO - Sample order numbers: ['SO-00145', 'SO-00146', 'SO-00262']
+2025-08-26 14:37:52,659 - INFO - Found 202 orders in initial sync period
+2025-08-26 14:37:52,659 - INFO - Order numbers found: ['SO-00145', 'SO-00146', 'SO-00262', 'SO-00263', 'SO-00264']

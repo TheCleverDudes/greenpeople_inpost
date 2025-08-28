@@ -143,18 +143,57 @@ def get_inpost_order_by_id(order_id):
         return None
 
 def cancel_order_in_inpost(inpost_order_id):
-    """Cancel an order in InPost when it's cancelled in CIN7"""
-    url = f"https://api-inpost.linker.shop/public-api/v1/orders/{inpost_order_id}?apikey={INPOST_API_KEY}"
+    """Cancel an order in InPost by updating its status to 'A'"""
+    base_url = f"https://api-inpost.linker.shop/public-api/v1/orders"
+    api_key_param = f"apikey={INPOST_API_KEY}"
+    
+    # Step 1: Get the complete order details
+    print(f"📥 Fetching order details for {inpost_order_id}...")
+    get_url = f"{base_url}/{inpost_order_id}?{api_key_param}"
+    
     try:
-        response = requests.put(url, headers=inpost_headers)
-        if response.status_code in [200, 204]:
-            print(f"✅ Order {inpost_order_id} cancelled in InPost")
+        get_response = requests.get(get_url, headers=inpost_headers)
+        if get_response.status_code != 200:
+            print(f"❌ Failed to fetch order {inpost_order_id}: {get_response.status_code} - {get_response.text}")
+            return False
+            
+        order_data = get_response.json()
+        print(f"✅ Successfully fetched order details")
+        
+    except Exception as e:
+        print(f"❌ Error fetching order {inpost_order_id}: {str(e)}")
+        return False
+    
+    # Step 2: Update the order status to "A" (cancelled)
+    # Keep all required fields and only change the orderStatus
+    order_data["orderStatus"] = "A"
+    
+    # Remove any fields that shouldn't be included in the update or might cause issues
+    fields_to_remove = ["id", "uuid", "createdAt", "updatedAt", "statusHistory", 
+                       "externalDeliveryIds", "number", "wms_id", "origin"]
+    for field in fields_to_remove:
+        order_data.pop(field, None)
+    
+    put_url = f"{base_url}/{inpost_order_id}?{api_key_param}"
+    print(f"📤 Updating order status to 'A' for order {inpost_order_id}...")
+    
+    try:
+        put_response = requests.put(put_url, headers=inpost_headers, json=order_data)
+        if put_response.status_code in [200, 204]:
+            print(f"✅ Order {inpost_order_id} status updated to 'A' (cancelled) in InPost")
             return True
         else:
-            print(f"❌ Failed to cancel order {inpost_order_id} in InPost: {response.status_code}")
+            print(f"❌ Failed to update order {inpost_order_id} status: {put_response.status_code} - {put_response.text}")
+            # If we get validation errors, print them for debugging
+            if put_response.status_code == 400:
+                try:
+                    error_details = put_response.json()
+                    print(f"📝 Validation errors: {json.dumps(error_details, indent=2)}")
+                except:
+                    pass
             return False
     except Exception as e:
-        print(f"❌ Error cancelling order {inpost_order_id} in InPost: {str(e)}")
+        print(f"❌ Error updating order {inpost_order_id} status: {str(e)}")
         return False
 
 def check_and_sync_cancelled_orders():
@@ -165,7 +204,7 @@ def check_and_sync_cancelled_orders():
     cancelled_orders = get_recent_voided_orders(7)
     
     for order in cancelled_orders:
-        order_number = order.get("SaleOrderNumber", "")
+        order_number = order.get("OrderNumber", "")  # Fixed: was "SaleOrderNumber"
         sale_id = order.get("SaleID", "")
         
         if not order_number:
@@ -524,6 +563,41 @@ def get_recent_sale_ids(days_back=1):
 
     return [sale["SaleID"] for sale in data["SaleList"] if sale.get("Status") == "ORDERED"]
 
+
+def validate_order_for_inpost(data):
+    """Validate order data before sending to InPost"""
+    order_data = data["Order"]
+    shipping = data.get("ShippingAddress", {})
+    
+    errors = []
+    
+    # Check shipping country restrictions
+    country = shipping.get("Country", "")
+    restricted_countries = ["United Kingdom", "UK", "Norway", "Norweski", "Wielka Brytania"]
+    if country in restricted_countries:
+        errors.append(f"❌ Cannot ship to {country} - customs clearance not supported. FedEx shipments are within EU only.")
+    
+    # Check for required contact information
+    phone = data.get("Phone", "") or shipping.get("Phone", "")
+    email = data.get("Email", "") or shipping.get("Email", "")
+    
+    if not phone:
+        errors.append("❌ No recipient contact telephone number provided")
+    
+    if not email:
+        errors.append("❌ No recipient email address provided")
+    
+    # Check delivery point validity
+    delivery_point = shipping.get("ID", "")
+    if delivery_point == "KKZ01A" and country not in ["Poland", "Polska", ""]:
+        errors.append(f"❌ Invalid delivery point KKZ01A for international shipment to {country}")
+    
+    # Check country vs delivery point consistency
+    if country == "Sweden" and shipping.get("Postcode", "").startswith("52-"):  # Polish postcode format
+        errors.append("❌ Country is Sweden but Polish postcode format detected")
+    
+    return errors
+
 # === MAIN ===
 
 # First, check and sync any cancelled orders
@@ -549,6 +623,16 @@ for sale_id in SALE_IDS:
 
     print(f"\n🔄 Processing Core Sale: {order_number}")
     print(f"📋 Task ID: {task_id}")
+
+    # ADD THIS VALIDATION STEP HERE:
+    # Validate order before sending to InPost
+    validation_errors = validate_order_for_inpost(data)
+    if validation_errors:
+        print(f"❌ Order {order_number} has validation errors:")
+        for error in validation_errors:
+            print(f"   {error}")
+        print("⏭️  Skipping order due to validation errors")
+        continue
 
     # Step 1: Send to InPost
     payload = build_payload_from_core(data)

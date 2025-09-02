@@ -47,7 +47,7 @@ def get_fulfillment_status(sale_id):
 def get_country_code(country_name):
     return {
         "Poland": "PL", "Germany": "DE", "France": "FR", "United Kingdom": "GB", "Ireland": "IE",
-        "Italy": "IT", "Spain": "ES", "Netherlands": "NL", "Belgium": "BE", "Luxembourg": "LU"
+        "Italy": "IT", "Spain": "ES", "Netherlands": "NL", "Belgium": "BE", "Luxembourg": "LU", "Denmark": "DK"
     }.get(country_name, "PL")
 
 def build_items(lines):

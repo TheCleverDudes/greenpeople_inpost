@@ -268,7 +268,10 @@ def build_payload_from_core(data):
 
     is_poland = shipping.get("Country") == "Poland"
     carrier = "Kurier InPost - ShipX" if is_poland else "FedEx"
-    deliveryPointId = None if is_poland else (shipping.get("ID") or "KKZ01A")
+    
+    # FIXED: Only set deliveryPointId for Poland, not for other countries
+    deliveryPointId = (shipping.get("ID") or "KKZ01A") if is_poland else None
+    
     depotId = "556239"
 
     currency = order_data.get("SaleOrderCurrency") or order_data.get("Currency") or ("PLN" if is_poland else "EUR")
@@ -291,7 +294,7 @@ def build_payload_from_core(data):
         "deliveryPostCode": deliveryPostCode,
         "deliveryCity": deliveryCity,
         "deliveryCountry": deliveryCountry,
-        "deliveryPointId": deliveryPointId,
+        "deliveryPointId": deliveryPointId,  # This will now be None for non-Poland
         "depotId": depotId,
         "shipmentPrice": 0.00,
         "priceGross": priceGross,
@@ -758,6 +761,8 @@ def validate_order_for_inpost(data):
     
     # Check shipping country restrictions
     country = shipping.get("Country", "")
+    is_poland = country == "Poland"
+    
     restricted_countries = ["United Kingdom", "UK", "Norway", "Norweski", "Wielka Brytania"]
     if country in restricted_countries:
         errors.append(f"❌ Cannot ship to {country} - customs clearance not supported. FedEx shipments are within EU only.")
@@ -772,10 +777,12 @@ def validate_order_for_inpost(data):
     if not email:
         errors.append("❌ No recipient email address provided")
     
-    # Check delivery point validity
+    # Check delivery point validity - only relevant for Poland
     delivery_point = shipping.get("ID", "")
-    if delivery_point == "KKZ01A" and country not in ["Poland", "Polska", ""]:
-        errors.append(f"❌ Invalid delivery point KKZ01A for international shipment to {country}")
+    if is_poland and not delivery_point:
+        errors.append("❌ Polish shipments require a delivery point ID")
+    elif not is_poland and delivery_point:
+        errors.append("❌ Non-Polish shipments should not have a delivery point ID")
     
     # Check country vs delivery point consistency
     if country == "Sweden" and shipping.get("Postcode", "").startswith("52-"):  # Polish postcode format

@@ -275,7 +275,11 @@ def build_payload_from_core(data):
     depotId = "556239"
 
     currency = order_data.get("SaleOrderCurrency") or order_data.get("Currency") or ("PLN" if is_poland else "EUR")
-    phone = data.get("Phone", "+48500600700" if is_poland else "+441403740350")
+    # UPDATED: Phone number handling with customer support fallback
+    phone = data.get("Phone", "") or shipping.get("Phone", "")
+    if not phone:
+        # Use customer support number if no phone number provided
+        phone = "+4401403740350"  # Customer support number
 
     items = build_items(order_data["Lines"])
     priceGross = sum(item['price_gross'] for item in items)
@@ -752,6 +756,44 @@ def get_recent_sale_ids(days_back=1):
     return [sale["SaleID"] for sale in data["SaleList"] if sale.get("Status") == "ORDERED"]
 
 
+# def validate_order_for_inpost(data):
+#     """Validate order data before sending to InPost"""
+#     order_data = data["Order"]
+#     shipping = data.get("ShippingAddress", {})
+    
+#     errors = []
+    
+#     # Check shipping country restrictions
+#     country = shipping.get("Country", "")
+#     is_poland = country == "Poland"
+
+#     restricted_countries = ["United Kingdom", "UK", "Norway", "Norweski", "Wielka Brytania"]
+#     if country in restricted_countries:
+#         errors.append(f"❌ Cannot ship to {country} - customs clearance not supported. FedEx shipments are within EU only.")
+    
+#     # Check for required contact information
+#     phone = data.get("Phone", "") or shipping.get("Phone", "")
+#     email = data.get("Email", "") or shipping.get("Email", "")
+    
+#     if not phone:
+#         errors.append("❌ No recipient contact telephone number provided")
+    
+#     if not email:
+#         errors.append("❌ No recipient email address provided")
+    
+#     # Check delivery point validity - only relevant for Poland
+#     delivery_point = shipping.get("ID", "")
+#     if is_poland and not delivery_point:
+#         errors.append("❌ Polish shipments require a delivery point ID")
+#     elif not is_poland and delivery_point:
+#         errors.append("❌ Non-Polish shipments should not have a delivery point ID")
+    
+#     # Check country vs delivery point consistency
+#     if country == "Sweden" and shipping.get("Postcode", "").startswith("52-"):  # Polish postcode format
+#         errors.append("❌ Country is Sweden but Polish postcode format detected")
+    
+#     return errors
+
 def validate_order_for_inpost(data):
     """Validate order data before sending to InPost"""
     order_data = data["Order"]
@@ -763,26 +805,21 @@ def validate_order_for_inpost(data):
     country = shipping.get("Country", "")
     is_poland = country == "Poland"
     
-    restricted_countries = ["United Kingdom", "UK", "Norway", "Norweski", "Wielka Brytania"]
-    if country in restricted_countries:
-        errors.append(f"❌ Cannot ship to {country} - customs clearance not supported. FedEx shipments are within EU only.")
-    
-    # Check for required contact information
-    phone = data.get("Phone", "") or shipping.get("Phone", "")
-    email = data.get("Email", "") or shipping.get("Email", "")
-    
-    if not phone:
-        errors.append("❌ No recipient contact telephone number provided")
-    
-    if not email:
-        errors.append("❌ No recipient email address provided")
-    
     # Check delivery point validity - only relevant for Poland
     delivery_point = shipping.get("ID", "")
     if is_poland and not delivery_point:
         errors.append("❌ Polish shipments require a delivery point ID")
     elif not is_poland and delivery_point:
         errors.append("❌ Non-Polish shipments should not have a delivery point ID")
+    
+    # Check for required contact information - phone is now optional due to fallback
+    email = data.get("Email", "") or shipping.get("Email", "")
+    
+    if not email:
+        errors.append("❌ No recipient email address provided")
+    
+    # Phone number is now optional (will use customer support number as fallback)
+    # So we removed the phone validation error
     
     # Check country vs delivery point consistency
     if country == "Sweden" and shipping.get("Postcode", "").startswith("52-"):  # Polish postcode format

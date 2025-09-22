@@ -35,7 +35,7 @@ def get_fulfillment_status(sale_id):
         print(f"📥 Fulfillment API response status: {response.status_code}")
         if response.status_code == 200:
             data = response.json()
-            print(f"📥 Fulfillment data: {json.dumps(data, indent=2)[:500]}...")  # Show first 500 chars
+            print(f"📥 Fulfillment data: {json.dumps(data, indent=2)[:500]}...")
             return data
         else:
             print(f"❌ Fulfillment API error: {response.status_code} - {response.text}")
@@ -269,17 +269,24 @@ def build_payload_from_core(data):
     is_poland = shipping.get("Country") == "Poland"
     carrier = "Kurier InPost - ShipX" if is_poland else "FedEx"
     
-    # FIXED: Only set deliveryPointId for Poland, not for other countries
     deliveryPointId = (shipping.get("ID") or "KKZ01A") if is_poland else None
     
     depotId = "556239"
 
+    # Corrected: Get the currency from the order data, with a default based on the country if needed
     currency = order_data.get("SaleOrderCurrency") or order_data.get("Currency") or ("PLN" if is_poland else "EUR")
-    # UPDATED: Phone number handling with customer support fallback
+    if not currency:
+        # Fallback based on country if SaleOrderCurrency is missing
+        if shipping.get("Country") == "Sweden":
+            currency = "SEK"
+        elif shipping.get("Country") == "United Kingdom":
+            currency = "GBP"
+        else:
+            currency = "EUR"
+
     phone = data.get("Phone", "") or shipping.get("Phone", "")
     if not phone:
-        # Use customer support number if no phone number provided
-        phone = "+4401403740350"  # Customer support number
+        phone = "+4401403740350"
 
     items = build_items(order_data["Lines"])
     priceGross = sum(item['price_gross'] for item in items)
@@ -298,7 +305,7 @@ def build_payload_from_core(data):
         "deliveryPostCode": deliveryPostCode,
         "deliveryCity": deliveryCity,
         "deliveryCountry": deliveryCountry,
-        "deliveryPointId": deliveryPointId,  # This will now be None for non-Poland
+        "deliveryPointId": deliveryPointId,
         "depotId": depotId,
         "shipmentPrice": 0.00,
         "priceGross": priceGross,
@@ -311,10 +318,9 @@ def send_to_inpost(payload):
     response = requests.post(url, headers=inpost_headers, json=payload)
     print(f"📦 Sent to InPost: {payload['externalId']} | Status: {response.status_code}")
     
-    # Check if it's a duplicate order error (409)
     if response.status_code == 409:
         print("ℹ️  Order already exists in InPost (duplicate), continuing...")
-        return response  # Continue processing since order exists
+        return response
     
     return response
 
@@ -339,7 +345,6 @@ def cancel_order_in_inpost(inpost_order_id):
     base_url = f"https://api-inpost.linker.shop/public-api/v1/orders"
     api_key_param = f"apikey={INPOST_API_KEY}"
     
-    # Step 1: Get the complete order details
     print(f"📥 Fetching order details for {inpost_order_id}...")
     get_url = f"{base_url}/{inpost_order_id}?{api_key_param}"
     
@@ -356,11 +361,8 @@ def cancel_order_in_inpost(inpost_order_id):
         print(f"❌ Error fetching order {inpost_order_id}: {str(e)}")
         return False
     
-    # Step 2: Update the order status to "A" (cancelled)
-    # Keep all required fields and only change the orderStatus
     order_data["orderStatus"] = "A"
     
-    # Remove any fields that shouldn't be included in the update or might cause issues
     fields_to_remove = ["id", "uuid", "createdAt", "updatedAt", "statusHistory", 
                        "externalDeliveryIds", "number", "wms_id", "origin"]
     for field in fields_to_remove:
@@ -376,7 +378,6 @@ def cancel_order_in_inpost(inpost_order_id):
             return True
         else:
             print(f"❌ Failed to update order {inpost_order_id} status: {put_response.status_code} - {put_response.text}")
-            # If we get validation errors, print them for debugging
             if put_response.status_code == 400:
                 try:
                     error_details = put_response.json()
@@ -392,11 +393,10 @@ def check_and_sync_cancelled_orders():
     """Check for orders cancelled in CIN7 and cancel them in InPost"""
     print("🔍 Checking for cancelled orders that need to be synced to InPost...")
     
-    # Get recently cancelled orders from CIN7 (last 7 days)
     cancelled_orders = get_recent_voided_orders(7)
     
     for order in cancelled_orders:
-        order_number = order.get("OrderNumber", "")  # Fixed: was "SaleOrderNumber"
+        order_number = order.get("OrderNumber", "")
         sale_id = order.get("SaleID", "")
         
         if not order_number:
@@ -404,12 +404,10 @@ def check_and_sync_cancelled_orders():
             
         print(f"📋 Checking cancelled order: {order_number}")
         
-        # Check if order exists in InPost
         inpost_orders = get_inpost_order_by_external_id(order_number)
         if inpost_orders:
             inpost_order_id = inpost_orders[0].get("id")
             if inpost_order_id:
-                # Cancel in InPost
                 if cancel_order_in_inpost(inpost_order_id):
                     print(f"✅ Successfully synced cancellation for order {order_number}")
                 else:
@@ -423,7 +421,6 @@ def get_recent_voided_orders(days_back=7):
     """Get recently voided orders from CIN7"""
     start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     
-    # Get voided orders from the last X days
     url = f"https://inventory.dearsystems.com/ExternalApi/v2/saleList?From={start_date}&Status=Voided&Limit=1000"
     
     try:
@@ -450,35 +447,55 @@ def check_actual_fulfillment_status(data, sale_id):
     pack_done = False
     ship_done = False
     fulfillment_task_id = None
-    pack_box_name = "1"  # Default box name
+    pack_box_name = "1"
+    packed_lines = []
     
     if fulfillment_data and "Fulfilments" in fulfillment_data and fulfillment_data["Fulfilments"]:
-        # Get the first fulfillment (assuming there's only one)
         fulfillment = fulfillment_data["Fulfilments"][0]
         fulfillment_task_id = fulfillment.get("TaskID")
         fulfillment_number = fulfillment.get("FulfillmentNumber", "Unknown")
         
         print(f"📋 Processing fulfillment: {fulfillment_number} (TaskID: {fulfillment_task_id})")
         
-        # Check Pick status
         if "Pick" in fulfillment and fulfillment["Pick"]:
             pick_status = fulfillment["Pick"].get("Status", "")
             pick_done = pick_status in ["AUTHORISED", "PICKED", "COMPLETED"]
             print(f"  📦 Pick Status: {pick_status} ({'✅ Done' if pick_done else '❌ Not Done'})")
         
-        # Check Pack status and get box name
         if "Pack" in fulfillment and fulfillment["Pack"]:
             pack_status = fulfillment["Pack"].get("Status", "")
             pack_done = pack_status in ["AUTHORISED", "PACKED", "COMPLETED"]
             print(f"  📦 Pack Status: {pack_status} ({'✅ Done' if pack_done else '❌ Not Done'})")
             
-            # Get the box name from the first pack line
             if "Lines" in fulfillment["Pack"] and fulfillment["Pack"]["Lines"]:
                 first_pack_line = fulfillment["Pack"]["Lines"][0]
                 pack_box_name = first_pack_line.get("Box", "1")
                 print(f"  📦 Pack Box Name: {pack_box_name}")
+                
+                for pl in fulfillment["Pack"]["Lines"]:
+                    # Determine the packed quantity field reliably
+                    qty = (
+                        pl.get("Packed")
+                        or pl.get("PackedQuantity")
+                        or pl.get("QuantityPacked")
+                        or pl.get("Quantity")
+                        or 0
+                    )
+                    try:
+                        qty = float(qty)
+                    except Exception:
+                        qty = 0
+                    if qty and qty > 0:
+                        packed_line = {
+                            "ProductID": pl.get("ProductID"),
+                            "SKU": pl.get("SKU"),
+                            "Name": pl.get("Name"),
+                            "Location": pl.get("Location"),
+                            "Quantity": qty,
+                            "Box": pl.get("Box", pack_box_name)
+                        }
+                        packed_lines.append(packed_line)
         
-        # Check Ship status
         if "Ship" in fulfillment and fulfillment["Ship"]:
             ship_status = fulfillment["Ship"].get("Status", "")
             ship_done = ship_status in ["AUTHORISED", "SHIPPED", "COMPLETED"]
@@ -488,7 +505,7 @@ def check_actual_fulfillment_status(data, sale_id):
     
     print(f"📊 Final status - PICK: {'✅' if pick_done else '❌'}, PACK: {'✅' if pack_done else '❌'}, SHIP: {'✅' if ship_done else '❌'}")
     
-    return pick_done, pack_done, ship_done, fulfillment_task_id, pack_box_name
+    return pick_done, pack_done, ship_done, fulfillment_task_id, pack_box_name, packed_lines
 
 def check_if_fulfillment_exists(task_id, fulfillment_type):
     """Check if fulfillment already exists for this task."""
@@ -497,7 +514,6 @@ def check_if_fulfillment_exists(task_id, fulfillment_type):
         response = requests.get(url, headers=core_headers)
         if response.status_code == 200:
             data = response.json()
-            # If we get data back, fulfillment exists
             return len(data) > 0
         return False
     except:
@@ -517,21 +533,21 @@ def attempt_authorize_pick(task_id, lines):
         print(f"📥 PICK response: {response.status_code}")
         if response.status_code == 200:
             print(f"✅ PICK AUTHORIZED | HTTP {response.status_code}")
-            return True, True  # Success, no issues
+            return True, True
         elif response.status_code == 400:
             error_text = response.text.lower()
             if "already" in error_text or "exists" in error_text:
                 print("✅ PICK already authorized")
-                return True, True  # Success, already exists
+                return True, True
             else:
                 print(f"⚠️  PICK authorization issues: {response.text}")
-                return True, False  # Success but with warnings
+                return True, False
         else:
             response.raise_for_status()
             return True, True
     except Exception as e:
         print(f"❌ Error authorizing pick for task {task_id}: {str(e)}")
-        return False, False  # Failed
+        return False, False
 
 def attempt_authorize_pack(task_id, lines):
     """Attempt to authorize packing for an order."""
@@ -547,41 +563,45 @@ def attempt_authorize_pack(task_id, lines):
         print(f"📥 PACK response: {response.status_code}")
         if response.status_code == 200:
             print(f"✅ PACK AUTHORIZED | HTTP {response.status_code}")
-            return True, True  # Success, no issues
+            return True, True
         elif response.status_code == 400:
             error_text = response.text.lower()
             if "already" in error_text or "exists" in error_text:
                 print("✅ PACK already authorized")
-                return True, True  # Success, already exists
+                return True, True
             else:
                 print(f"⚠️  PACK authorization issues: {response.text}")
-                return True, False  # Success but with warnings
+                return True, False
         else:
             response.raise_for_status()
             return True, True
     except Exception as e:
         print(f"❌ Error authorizing pack for task {task_id}: {str(e)}")
-        return False, False  # Failed
+        return False, False
 
-def authorize_ship(task_id, tracking_number, tracking_url, shipping_address, lines, box_name):
+def authorize_ship(task_id, tracking_number, tracking_url, shipping_address, lines, box_name, carrier):
     """Authorize shipping for an order."""
     url = "https://inventory.dearsystems.com/ExternalApi/v2/sale/fulfilment/ship"
     
-    # Build the shipping lines properly using the correct box name
-    shipping_lines = []
-    if lines:
-        # Take the first line as example and create shipping info
-        shipping_lines.append({
-            "ShipmentDate": datetime.now().strftime("%Y-%m-%d"),
-            "Carrier": "InPost",  # Always use InPost for these orders
-            "Box": box_name,  # Use the correct box name from PACK
-            "TrackingNumber": tracking_number,
-            "TrackingURL": tracking_url or "",
-            "IsShipped": True
-        })
+    # Determine number of boxes from the lines (unique Box entries)
+    unique_boxes = sorted({str(l.get("Box", box_name)) for l in lines if l.get("Box") or box_name})
+    boxes_count = str(len(unique_boxes) if unique_boxes else 1)
+    
+    # Filter out any zero-qty lines defensively
+    lines = [l for l in lines if float(l.get("Quantity", 0) or 0) > 0]
+    
+    shipment_line = {
+        "ShipmentDate": datetime.now().strftime("%Y-%m-%d"),
+        "Carrier": carrier,
+        "Box": boxes_count,
+        "TrackingNumber": tracking_number,
+        "TrackingURL": tracking_url or "",
+        "IsShipped": True,
+        "Lines": lines
+    }
     
     payload = {
-        "TaskID": task_id,  # This should be the fulfillment task ID, not the sale task ID
+        "TaskID": task_id,
         "Status": "AUTHORISED",
         "RequireBy": datetime.now().strftime("%Y-%m-%d"),
         "ShippingAddress": {
@@ -598,14 +618,14 @@ def authorize_ship(task_id, tracking_number, tracking_url, shipping_address, lin
             "ShipToOther": shipping_address.get("ShipToOther", False)
         },
         "ShippingNotes": shipping_address.get("ShippingNotes", f"InPost tracking: {tracking_number}"),
-        "Lines": shipping_lines
+        "Lines": [shipment_line]
     }
     
-    print(f"📤 SHIP payload: {json.dumps(payload, indent=2)}")  # Debug payload
+    print(f"📤 SHIP payload: {json.dumps(payload, indent=2)}")
     
     try:
         response = requests.post(url, headers=core_headers, json=payload)
-        print(f"📥 SHIP response: {response.status_code}")  # Debug response
+        print(f"📥 SHIP response: {response.status_code}")
         if response.status_code == 200:
             print(f"✅ SHIP AUTHORIZED | HTTP {response.status_code}")
             return True
@@ -630,20 +650,16 @@ def authorize_ship(task_id, tracking_number, tracking_url, shipping_address, lin
 def process_fulfillment(data, sale_id, tracking_number, tracking_url):
     """Process all fulfillment steps (PICK, PACK, SHIP) for an order."""
     order_data = data["Order"]
-    sale_task_id = data["ID"]  # This is the sale task ID
-    # sale_id is now passed in as parameter
+    sale_task_id = data["ID"]
     lines = order_data.get("Lines", [])
     shipping = data.get("ShippingAddress", {})
     
-    # Check actual fulfillment status from fulfillment API and get fulfillment task ID and box name
-    pick_done, pack_done, ship_done, fulfillment_task_id, pack_box_name = check_actual_fulfillment_status(data, sale_id)
+    pick_done, pack_done, ship_done, fulfillment_task_id, pack_box_name, packed_lines_from_core = check_actual_fulfillment_status(data, sale_id)
     
-    # Use fulfillment task ID for fulfillment operations, fallback to sale task ID if not found
     task_id_to_use = fulfillment_task_id if fulfillment_task_id else sale_task_id
     print(f"🔧 Using Task ID for fulfillment: {task_id_to_use}")
     print(f"📦 Using Box Name: {pack_box_name}")
     
-    # Prepare fulfillment lines
     fulfillment_lines = []
     for line in lines:
         if line.get("SKU") and line.get("ProductID") != "00000000-0000-0000-0000-000000000000":
@@ -655,18 +671,16 @@ def process_fulfillment(data, sale_id, tracking_number, tracking_url):
                 "Quantity": line["Quantity"]
             })
     
-    # Prepare pack lines with correct box information
     pack_lines = []
     for line in fulfillment_lines:
         pack_line = line.copy()
-        pack_line["Box"] = pack_box_name  # Use the correct box name from PACK
+        pack_line["Box"] = pack_box_name
         pack_lines.append(pack_line)
     
     success = True
     pick_success = True
     pack_success = True
     
-    # Only attempt PICK if not already done
     if not pick_done:
         print("🔄 Attempting PICK authorization...")
         pick_ok, pick_clean = attempt_authorize_pick(task_id_to_use, fulfillment_lines)
@@ -682,7 +696,6 @@ def process_fulfillment(data, sale_id, tracking_number, tracking_url):
         print("✅ PICK already authorized, skipping...")
         pick_success = True
     
-    # Only attempt PACK if not already done and PICK is successful
     if not pack_done:
         if pick_success or pick_done:
             print("🔄 Attempting PACK authorization...")
@@ -703,10 +716,38 @@ def process_fulfillment(data, sale_id, tracking_number, tracking_url):
         print("✅ PACK already authorized, skipping...")
         pack_success = True
     
-    # Attempt SHIP authorization (only if both PICK and PACK are done)
+    # Choose the lines to use for SHIP: prefer exact packed lines from Core if available
+    ship_lines = packed_lines_from_core if packed_lines_from_core else pack_lines
+    
+    # Pre-flight log: compare order lines vs ship lines and print ship lines for debugging
+    try:
+        ordered_qty = sum(float(l.get("Quantity", 0) or 0) for l in fulfillment_lines)
+        ship_qty = sum(float(l.get("Quantity", 0) or 0) for l in ship_lines)
+        print(f"🧮 Line check: ordered (fulfillment) qty={ordered_qty}, ship qty={ship_qty}, items: ordered={len(fulfillment_lines)}, ship={len(ship_lines)}")
+        print(f"🧾 Ship lines detail: {json.dumps(ship_lines, indent=2)}")
+        missing = []
+        order_key = lambda l: (l.get("ProductID"), str(l.get("Box", pack_box_name)))
+        ship_map = {}
+        for l in ship_lines:
+            key = order_key(l)
+            ship_map[key] = ship_map.get(key, 0) + float(l.get("Quantity", 0) or 0)
+        for l in pack_lines:
+            key = order_key(l)
+            q = float(l.get("Quantity", 0) or 0)
+            if ship_map.get(key, 0) < q:
+                missing.append({"ProductID": l.get("ProductID"), "SKU": l.get("SKU"), "need": q, "have": ship_map.get(key, 0), "Box": l.get("Box", pack_box_name)})
+        if missing:
+            print(f"⚠️  Potential missing lines for SHIP: {json.dumps(missing, indent=2)}")
+    except Exception as e:
+        print(f"⚠️  Pre-flight line check failed: {str(e)}")
+    
+    # Compute appropriate carrier (align with Dear): FedEx for non-Poland, InPost for Poland
+    country = (shipping or {}).get("Country", "")
+    computed_carrier = "InPost" if country == "Poland" else "FedEx International Delivery"
+    
     if (pick_done or pick_success) and (pack_done or pack_success):
         print("🔄 Attempting SHIP authorization...")
-        if not authorize_ship(task_id_to_use, tracking_number, tracking_url, shipping, pack_lines, pack_box_name):
+        if not authorize_ship(task_id_to_use, tracking_number, tracking_url, shipping, ship_lines, pack_box_name, computed_carrier):
             print("❌ SHIP authorization failed")
             success = False
         else:
@@ -727,8 +768,11 @@ def get_recent_sale_ids(days_back=1):
     if not data.get("SaleList"):
         print("❌ No sales found.")
         return []
-
-    return [sale["SaleID"] for sale in data["SaleList"] if sale.get("Status") == "ORDERED"]
+    
+    # Corrected: Filter for multiple relevant statuses to include B2B orders
+    relevant_statuses = ["ORDERED", "AUTHORISED", "INVOICED"]
+    
+    return [sale["SaleID"] for sale in data["SaleList"] if sale.get("Status") in relevant_statuses]
 
 def validate_order_for_inpost(data):
     """Validate order data before sending to InPost"""
@@ -737,44 +781,34 @@ def validate_order_for_inpost(data):
     
     errors = []
     
-    # Check shipping country restrictions
     country = shipping.get("Country", "")
     is_poland = country == "Poland"
     
-    # Check delivery point validity - only relevant for Poland
     delivery_point = shipping.get("ID", "")
     if is_poland and not delivery_point:
         errors.append("❌ Polish shipments require a delivery point ID")
     elif not is_poland and delivery_point:
         errors.append("❌ Non-Polish shipments should not have a delivery point ID")
     
-    # Check for required contact information - phone is now optional due to fallback
     email = data.get("Email", "") or shipping.get("Email", "")
     
     if not email:
         errors.append("❌ No recipient email address provided")
     
-    # Phone number is now optional (will use customer support number as fallback)
-    # So we removed the phone validation error
-    
-    # Check country vs delivery point consistency
-    if country == "Sweden" and shipping.get("Postcode", "").startswith("52-"):  # Polish postcode format
+    if country == "Sweden" and shipping.get("Postcode", "").startswith("52-"):
         errors.append("❌ Country is Sweden but Polish postcode format detected")
     
     return errors
 
 # === MAIN ===
 
-# First, check and sync any cancelled orders
 check_and_sync_cancelled_orders()
 
-# Then process new orders
 SALE_IDS = get_recent_sale_ids(1)
 
 for sale_id in SALE_IDS:
     data = get_core_sale(sale_id)
     
-    # Validate data before processing
     if not data or "Order" not in data:
         print(f"❌ Failed to retrieve valid data for sale {sale_id}")
         continue
@@ -789,8 +823,6 @@ for sale_id in SALE_IDS:
     print(f"\n🔄 Processing Core Sale: {order_number}")
     print(f"📋 Task ID: {task_id}")
 
-    # ADD THIS VALIDATION STEP HERE:
-    # Validate order before sending to InPost
     validation_errors = validate_order_for_inpost(data)
     if validation_errors:
         print(f"❌ Order {order_number} has validation errors:")
@@ -799,16 +831,13 @@ for sale_id in SALE_IDS:
         print("⏭️  Skipping order due to validation errors")
         continue
 
-    # Step 1: Send to InPost
     payload = build_payload_from_core(data)
     response = send_to_inpost(payload)
     
-    # If it's a 409 error (duplicate), we can still continue processing
     if response.status_code not in [200, 201, 409]:
         print(f"❌ Failed to send to InPost, skipping order {order_number}")
         continue
 
-    # Step 2: Check InPost status
     print(f"🔍 Checking InPost status for {order_number}...")
     inpost_order = get_inpost_order_by_external_id(order_number)
     if not inpost_order:
@@ -830,7 +859,6 @@ for sale_id in SALE_IDS:
         print("❌ No tracking number available, skipping fulfillment...")
         continue
 
-    # Step 3: Process fulfillment (PICK, PACK, SHIP)
     print("🔄 Processing fulfillment authorization...")
     if process_fulfillment(data, sale_id, tracking_number, tracking_url):
         print(f"✅ Successfully completed all fulfillment steps for order {order_number}")

@@ -266,23 +266,29 @@ def build_payload_from_core(data):
     deliveryCity = shipping.get("City", "Warszawa")
     deliveryCountry = get_country_code(shipping.get("Country", "Poland"))
 
+    # Determine base country flag for carrier/delivery point logic
     is_poland = shipping.get("Country") == "Poland"
     carrier = "Kurier InPost - ShipX" if is_poland else "FedEx"
-    
     deliveryPointId = (shipping.get("ID") or "KKZ01A") if is_poland else None
-    
     depotId = "556239"
 
-    # Corrected: Get the currency from the order data, with a default based on the country if needed
-    currency = order_data.get("SaleOrderCurrency") or order_data.get("Currency") or ("PLN" if is_poland else "EUR")
-    if not currency:
-        # Fallback based on country if SaleOrderCurrency is missing
-        if shipping.get("Country") == "Sweden":
+    # --- Currency Determination Logic (Corrected) ---
+    # 1. Try to get currency directly from the order data
+    currency = order_data.get("SaleOrderCurrency") or order_data.get("Currency")
+
+    # 2. If not found in order data, determine fallback based on country
+    if not currency: # Only if it was genuinely missing from the API response
+        country_name = shipping.get("Country")
+        if country_name == "Poland":
+            currency = "PLN"
+        elif country_name == "Sweden": # This will now be checked
             currency = "SEK"
-        elif shipping.get("Country") == "United Kingdom":
+        elif country_name == "United Kingdom":
             currency = "GBP"
         else:
+            # Default to EUR for other countries if currency isn't specified in API
             currency = "EUR"
+    # --- End Currency Determination Logic ---
 
     phone = data.get("Phone", "") or shipping.get("Phone", "")
     if not phone:

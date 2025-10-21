@@ -667,21 +667,33 @@ def authorize_ship(task_id, tracking_number, tracking_url, shipping_address, lin
     """Authorize shipping for an order."""
     url = "https://inventory.dearsystems.com/ExternalApi/v2/sale/fulfilment/ship"
     
-    # Determine number of boxes from the lines (unique Box entries)
-    unique_boxes = sorted({str(l.get("Box", box_name)) for l in lines if l.get("Box") or box_name})
-    boxes_count = str(len(unique_boxes) if unique_boxes else 1)
+    # Ensure all lines have the required fields
+    ship_lines = []
+    for line in lines:
+        if float(line.get("Quantity", 0)) > 0:
+            ship_line = {
+                "ProductID": line["ProductID"],
+                "SKU": line["SKU"],
+                "Name": line["Name"],
+                "Location": line.get("Location", ""),
+                "Quantity": line["Quantity"],
+                "Box": line.get("Box", box_name or "1")
+            }
+            ship_lines.append(ship_line)
     
-    # Filter out any zero-qty lines defensively
-    lines = [l for l in lines if float(l.get("Quantity", 0) or 0) > 0]
-    
+    if not ship_lines:
+        print("❌ No valid lines found for shipping")
+        return False
+
+    # Create the shipment line with all items
     shipment_line = {
         "ShipmentDate": datetime.now().strftime("%Y-%m-%d"),
         "Carrier": carrier,
-        "Box": boxes_count,
+        "Box": "1",  # Use "1" as the box number for the entire shipment
         "TrackingNumber": tracking_number,
         "TrackingURL": tracking_url or "",
         "IsShipped": True,
-        "Lines": lines
+        "Lines": ship_lines  # Include all lines in the shipment
     }
     
     payload = {
@@ -702,7 +714,7 @@ def authorize_ship(task_id, tracking_number, tracking_url, shipping_address, lin
             "ShipToOther": shipping_address.get("ShipToOther", False)
         },
         "ShippingNotes": shipping_address.get("ShippingNotes", f"InPost tracking: {tracking_number}"),
-        "Lines": [shipment_line]
+        "Lines": [shipment_line]  # Single shipment containing all items
     }
     
     print(f"📤 SHIP payload: {json.dumps(payload, indent=2)}")
@@ -722,10 +734,10 @@ def authorize_ship(task_id, tracking_number, tracking_url, shipping_address, lin
                 print(f"❌ SHIP authorization failed: {response.text}")
                 return False
         else:
-            response.raise_for_status()
-            return True
+            print(f"❌ Unexpected status code: {response.status_code} - {response.text}")
+            return False
     except requests.exceptions.HTTPError as e:
-        print(f"❌ HTTP Error authorizing ship for task {task_id}: {response.status_code} - {response.text}")
+        print(f"❌ HTTP Error authorizing ship for task {task_id}: {e}")
         return False
     except Exception as e:
         print(f"❌ Error authorizing ship for task {task_id}: {str(e)}")

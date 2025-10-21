@@ -1,6 +1,8 @@
 import requests
 import json
 from datetime import datetime, timedelta
+import time
+import random
 
 # === Credentials ===
 CORE_ACCOUNT_ID = "3384f900-b8b1-41bc-8324-1e6000e897ec"
@@ -17,21 +19,66 @@ inpost_headers = {
     "Content-Type": "application/json"
 }
 
+# --- Dear Systems rate-limit helpers ---
+_DEAR_LAST_CALL_AT = 0.0
+_DEAR_MIN_INTERVAL = 0.35  # seconds between Dear calls (tune 0.25–0.5)
+
+def _dear_rate_limit():
+    """Simple per-process pacing to avoid burst requests to Dear endpoints."""
+    global _DEAR_LAST_CALL_AT
+    now = time.time()
+    delta = now - _DEAR_LAST_CALL_AT
+    if delta < _DEAR_MIN_INTERVAL:
+        time.sleep(_DEAR_MIN_INTERVAL - delta)
+    _DEAR_LAST_CALL_AT = time.time()
+
+def dear_request(method, url, *, headers=None, json=None, params=None, timeout=30,
+                 max_retries=5, backoff_base=0.5, max_sleep=15.0):
+    """
+    HTTP request with retry/backoff for Dear (handles 429/5xx & Retry-After).
+    Returns the final requests.Response.
+    """
+    last_resp = None
+    for attempt in range(1, max_retries + 1):
+        _dear_rate_limit()
+        resp = requests.request(method, url, headers=headers, json=json, params=params, timeout=timeout)
+        last_resp = resp
+
+        if resp.status_code in (429, 500, 502, 503, 504):
+            retry_after = resp.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    delay = float(retry_after)
+                except ValueError:
+                    delay = backoff_base * (2 ** (attempt - 1)) + random.uniform(0, 0.25)
+            else:
+                delay = backoff_base * (2 ** (attempt - 1)) + random.uniform(0, 0.25)
+
+            if attempt >= max_retries:
+                return resp
+
+            time.sleep(min(delay, max_sleep))
+            continue
+
+        return resp
+
+    return last_resp
+
 def get_core_sale(sale_id):
     url = f"https://inventory.dearsystems.com/ExternalApi/v2/sale?ID={sale_id}&CombineAdditionalCharges=true"
-    response = requests.get(url, headers=core_headers)
-    
+    response = dear_request("GET", url, headers=core_headers)
+
     if response.status_code != 200:
         print(f"❌ Error fetching sale {sale_id}: {response.status_code} - {response.text}")
         return {}
-        
+
     return response.json()
 
 def get_fulfillment_status(sale_id):
     """Get actual fulfillment status from the fulfillment endpoint."""
     url = f"https://inventory.dearsystems.com/ExternalApi/v2/sale/fulfilment?SaleID={sale_id}"
     try:
-        response = requests.get(url, headers=core_headers)
+        response = dear_request("GET", url, headers=core_headers)
         print(f"📥 Fulfillment API response status: {response.status_code}")
         if response.status_code == 200:
             data = response.json()
@@ -430,7 +477,7 @@ def get_recent_voided_orders(days_back=7):
     url = f"https://inventory.dearsystems.com/ExternalApi/v2/saleList?From={start_date}&Status=Voided&Limit=1000"
     
     try:
-        response = requests.get(url, headers=core_headers)
+        response = dear_request("GET", url, headers=core_headers)
         data = response.json()
 
         if not data.get("SaleList"):
@@ -517,12 +564,13 @@ def check_if_fulfillment_exists(task_id, fulfillment_type):
     """Check if fulfillment already exists for this task."""
     url = f"https://inventory.dearsystems.com/ExternalApi/v2/sale/fulfilment/{fulfillment_type}?TaskID={task_id}"
     try:
-        response = requests.get(url, headers=core_headers)
+        response = dear_request("GET", url, headers=core_headers)
         if response.status_code == 200:
             data = response.json()
             return len(data) > 0
         return False
-    except:
+    except Exception as e:
+        print(f"❌ Error checking fulfillment existence: {str(e)}")
         return False
 
 def attempt_authorize_pick(task_id, lines):
@@ -535,7 +583,7 @@ def attempt_authorize_pick(task_id, lines):
     }
     
     try:
-        response = requests.post(url, headers=core_headers, json=payload)
+        response = dear_request("POST", url, headers=core_headers, json=payload)
         print(f"📥 PICK response: {response.status_code}")
         if response.status_code == 200:
             print(f"✅ PICK AUTHORIZED | HTTP {response.status_code}")
@@ -566,6 +614,36 @@ def attempt_authorize_pack(task_id, lines):
     
     try:
         response = requests.post(url, headers=core_headers, json=payload)
+        print(f"📥 PACK response: {response.status_code}")
+        if response.status_code == 200:
+            print(f"✅ PACK AUTHORIZED | HTTP {response.status_code}")
+            return True, True
+        elif response.status_code == 400:
+            error_text = response.text.lower()
+            if "already" in error_text or "exists" in error_text:
+                print("✅ PACK already authorized")
+                return True, True
+            else:
+                print(f"⚠️  PACK authorization issues: {response.text}")
+                return True, False
+        else:
+            response.raise_for_status()
+            return True, True
+    except Exception as e:
+        print(f"❌ Error authorizing pack for task {task_id}: {str(e)}")
+        return False, False
+
+def attempt_authorize_pack(task_id, lines):
+    """Attempt to authorize packing for an order."""
+    url = "https://inventory.dearsystems.com/ExternalApi/v2/sale/fulfilment/pack"
+    payload = {
+        "TaskID": task_id,
+        "Status": "AUTHORISED",
+        "Lines": lines
+    }
+    
+    try:
+        response = dear_request("POST", url, headers=core_headers, json=payload)
         print(f"📥 PACK response: {response.status_code}")
         if response.status_code == 200:
             print(f"✅ PACK AUTHORIZED | HTTP {response.status_code}")
@@ -630,7 +708,7 @@ def authorize_ship(task_id, tracking_number, tracking_url, shipping_address, lin
     print(f"📤 SHIP payload: {json.dumps(payload, indent=2)}")
     
     try:
-        response = requests.post(url, headers=core_headers, json=payload)
+        response = dear_request("POST", url, headers=core_headers, json=payload)
         print(f"📥 SHIP response: {response.status_code}")
         if response.status_code == 200:
             print(f"✅ SHIP AUTHORIZED | HTTP {response.status_code}")
@@ -768,17 +846,21 @@ def get_recent_sale_ids(days_back=1):
     start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     url = f"https://inventory.dearsystems.com/ExternalApi/v2/saleList?From={start_date}&Limit=1000"
     
-    response = requests.get(url, headers=core_headers)
-    data = response.json()
+    try:
+        response = dear_request("GET", url, headers=core_headers)
+        data = response.json()
 
-    if not data.get("SaleList"):
-        print("❌ No sales found.")
+        if not data.get("SaleList"):
+            print("❌ No sales found.")
+            return []
+        
+        # Filter for multiple relevant statuses to include B2B orders
+        relevant_statuses = ["ORDERED", "AUTHORISED", "INVOICED"]
+        
+        return [sale["SaleID"] for sale in data["SaleList"] if sale.get("Status") in relevant_statuses]
+    except Exception as e:
+        print(f"❌ Error fetching recent sales: {str(e)}")
         return []
-    
-    # Corrected: Filter for multiple relevant statuses to include B2B orders
-    relevant_statuses = ["ORDERED", "AUTHORISED", "INVOICED"]
-    
-    return [sale["SaleID"] for sale in data["SaleList"] if sale.get("Status") in relevant_statuses]
 
 def validate_order_for_inpost(data):
     """Validate order data before sending to InPost"""

@@ -315,7 +315,7 @@ def build_payload_from_core(data):
 
     # Determine base country flag for carrier/delivery point logic
     is_poland = shipping.get("Country") == "Poland"
-    carrier = "Kurier InPost - ShipX" if is_poland else "FedEx"
+    carrier = "Kurier InPost - ShipX" if is_poland else "FedEx International Delivery"
     deliveryPointId = (shipping.get("ID") or "KKZ01A") if is_poland else None
     depotId = "556239"
 
@@ -839,7 +839,7 @@ def process_fulfillment(data, sale_id, tracking_number, tracking_url):
     
     # Compute appropriate carrier (align with Dear): FedEx for non-Poland, InPost for Poland
     country = (shipping or {}).get("Country", "")
-    computed_carrier = "InPost" if country == "Poland" else "FedEx International Delivery"
+    computed_carrier = "Kurier InPost - ShipX" if country == "Poland" else "FedEx International Delivery"
     
     if (pick_done or pick_success) and (pack_done or pack_success):
         print("🔄 Attempting SHIP authorization...")
@@ -917,7 +917,7 @@ for sale_id in SALE_IDS:
     task_id = data["ID"]
     lines = data["Order"].get("Lines", [])
     shipping = data.get("ShippingAddress", {})
-    carrier = data.get("Carrier", "")
+    carrier = "Kurier InPost - ShipX" if shipping.get("Country") == "Poland" else "FedEx International Delivery"
     ship_by = data.get("ShipBy", "")
 
     print(f"\n🔄 Processing Core Sale: {order_number}")

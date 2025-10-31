@@ -294,7 +294,7 @@ def build_items(lines):
             "ordered": line["Quantity"],
             "quantity": line["Quantity"],
             "description": line["Name"],
-            "weight": float(line.get("ProductWeight", 0.1)) / 1000,
+            "weight": float(line.get("ProductWeight", 0.1)),
             "vat_code": 23,
             "price_gross": float(line["Price"]),
             "price_net": float(line["Total"])

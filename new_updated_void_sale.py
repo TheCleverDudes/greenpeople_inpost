@@ -890,10 +890,7 @@ def validate_order_for_inpost(data):
     elif not is_poland and delivery_point:
         errors.append("❌ Non-Polish shipments should not have a delivery point ID")
     
-    email = data.get("Email", "") or shipping.get("Email", "")
-    
-    if not email:
-        errors.append("❌ No recipient email address provided")
+    email = data.get("Email", "") or shipping.get("Email", "") or "organic@greenpeople.co.uk"
     
     if country == "Sweden" and shipping.get("Postcode", "").startswith("52-"):
         errors.append("❌ Country is Sweden but Polish postcode format detected")

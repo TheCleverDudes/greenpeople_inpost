@@ -874,6 +874,26 @@ def get_recent_sale_ids(days_back=1):
         print(f"❌ Error fetching recent sales: {str(e)}")
         return []
 
+def update_tracking_in_core(sale_id, tracking_number, tracking_url):
+    """Update tracking information in Core."""
+    url = f"https://inventory.dearsystems.com/ExternalApi/v2/sale/{sale_id}/fulfilment/ship"
+    payload = {
+        "trackingNumber": tracking_number,
+        "trackingURL": tracking_url or ""
+    }
+    
+    try:
+        response = dear_request("PUT", url, json=payload)
+        if response.status_code == 200:
+            print(f"✅ Successfully updated tracking in Core: {tracking_number}")
+            return True
+        else:
+            print(f"❌ Failed to update tracking in Core: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Error updating tracking in Core: {str(e)}")
+        return False
+
 def validate_order_for_inpost(data):
     """Validate order data before sending to InPost"""
     order_data = data["Order"]
@@ -955,6 +975,10 @@ for sale_id in SALE_IDS:
     if not tracking_number:
         print("❌ No tracking number available, skipping fulfillment...")
         continue
+        
+    # Update tracking information in Core
+    if not update_tracking_in_core(sale_id, tracking_number, tracking_url):
+        print("❌ Failed to update tracking in Core, but continuing with fulfillment...")
 
     print("🔄 Processing fulfillment authorization...")
     if process_fulfillment(data, sale_id, tracking_number, tracking_url):

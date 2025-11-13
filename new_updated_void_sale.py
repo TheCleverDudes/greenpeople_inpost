@@ -968,7 +968,16 @@ for sale_id in SALE_IDS:
 
     print("✅ InPost marked as sent. Proceeding to complete in Core...")
 
-    tracking_info = inpost_order[0].get("externalDeliveryIds", [{}])[0].get("operators_data", [{}])[0]
+    # tracking_info = inpost_order[0].get("externalDeliveryIds", [{}])[0].get("operators_data", [{}])[0]
+    # tracking_number = tracking_info.get("package_id", "")
+    # tracking_url = tracking_info.get("tracking_url", "")
+
+    # Get tracking info with better error handling
+    inpost_order_data = inpost_order[0] if inpost_order else {}
+    external_delivery = inpost_order_data.get("externalDeliveryIds", [{}])
+    operators_data = external_delivery[0].get("operators_data", [{}]) if external_delivery else [{}]
+    tracking_info = operators_data[0] if operators_data else {}
+
     tracking_number = tracking_info.get("package_id", "")
     tracking_url = tracking_info.get("tracking_url", "")
 

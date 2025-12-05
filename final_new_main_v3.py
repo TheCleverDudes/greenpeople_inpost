@@ -32,7 +32,7 @@ def _dear_rate_limit():
         time.sleep(_DEAR_MIN_INTERVAL - delta)
     _DEAR_LAST_CALL_AT = time.time()
 
-def dear_request(method, url, *, headers=None, json=None, params=None, timeout=30,
+def dear_request(method, url, *, headers=None, json=None, params=None, timeout=75,
                  max_retries=5, backoff_base=0.5, max_sleep=15.0):
     """
     HTTP request with retry/backoff for Dear (handles 429/5xx & Retry-After).
@@ -64,15 +64,64 @@ def dear_request(method, url, *, headers=None, json=None, params=None, timeout=3
 
     return last_resp
 
+
 def get_core_sale(sale_id):
+    """
+    Fetch the complete sale object using the /v2/sale endpoint.
+
+    This endpoint (with CombineAdditionalCharges=true) returns:
+      - Root-level sale fields (Customer, Email, ShippingAddress, Fulfilments, etc.)
+      - Nested "Order" section with "SaleOrderNumber" and "Lines". fileciteturn2file0
+
+    We normalise this into a compact structure that the rest of the script uses.
+    """
     url = f"https://inventory.dearsystems.com/ExternalApi/v2/sale?ID={sale_id}&CombineAdditionalCharges=true"
+    print(f"DEBUG: Fetching complete sale data from URL: {url}")
+
     response = dear_request("GET", url, headers=core_headers)
 
     if response.status_code != 200:
-        print(f"❌ Error fetching sale {sale_id}: {response.status_code} - {response.text}")
+        print(f"❌ Error fetching complete sale {sale_id}: {response.status_code} - {response.text}")
         return {}
 
-    return response.json()
+    try:
+        sale_root = response.json()
+    except Exception as e:
+        print(f"❌ Failed to decode JSON for sale {sale_id}: {e}")
+        return {}
+
+    # Basic sanity check
+    if not isinstance(sale_root, dict) or "ID" not in sale_root:
+        print(f"❌ Invalid response structure for sale {sale_id}")
+        return {}
+
+    # Dear's /v2/sale response has a nested "Order" block that holds SaleOrderNumber and Lines.
+    order_section = sale_root.get("Order") or {}
+
+    return {
+        # Order-level data (SaleOrderNumber, Lines, totals, etc.)
+        "Order": order_section,
+
+        # Internal sale identifier (root ID or SaleID if present)
+        "ID": sale_root.get("ID") or sale_root.get("SaleID"),
+
+        # Root-level shipping address (the one you showed in your sample JSON)
+        "ShippingAddress": sale_root.get("ShippingAddress") or {},
+
+        # Customer contact details
+        "Email": sale_root.get("Email") or sale_root.get("CustomerEmail"),
+        "Phone": sale_root.get("Phone") or sale_root.get("CustomerPhone"),
+        "Customer": sale_root.get("Customer") or sale_root.get("CustomerName"),
+
+        # Ship-by date: prefer explicit ShipBy, fall back to sale/order dates if necessary
+        "ShipBy": sale_root.get("ShipBy")
+                  or sale_root.get("ShipByDate")
+                  or order_section.get("SaleOrderDate"),
+
+        # Keep the full raw payload for any future debugging
+        "Raw": sale_root,
+    }
+
 
 def get_fulfillment_status(sale_id):
     """Get actual fulfillment status from the fulfillment endpoint."""
@@ -211,6 +260,7 @@ def get_country_code(country_name):
         "Namibia": "NA",
         "Nauru": "NR",
         "Nepal": "NP",
+        "Netherlands": "NL",
         "New Zealand": "NZ",
         "Nicaragua": "NI",
         "Niger": "NE",
@@ -621,36 +671,6 @@ def attempt_authorize_pack(task_id, lines):
     }
     
     try:
-        response = requests.post(url, headers=core_headers, json=payload)
-        print(f"📥 PACK response: {response.status_code}")
-        if response.status_code == 200:
-            print(f"✅ PACK AUTHORIZED | HTTP {response.status_code}")
-            return True, True
-        elif response.status_code == 400:
-            error_text = response.text.lower()
-            if "already" in error_text or "exists" in error_text:
-                print("✅ PACK already authorized")
-                return True, True
-            else:
-                print(f"⚠️  PACK authorization issues: {response.text}")
-                return True, False
-        else:
-            response.raise_for_status()
-            return True, True
-    except Exception as e:
-        print(f"❌ Error authorizing pack for task {task_id}: {str(e)}")
-        return False, False
-
-def attempt_authorize_pack(task_id, lines):
-    """Attempt to authorize packing for an order."""
-    url = "https://inventory.dearsystems.com/ExternalApi/v2/sale/fulfilment/pack"
-    payload = {
-        "TaskID": task_id,
-        "Status": "AUTHORISED",
-        "Lines": lines
-    }
-    
-    try:
         response = dear_request("POST", url, headers=core_headers, json=payload)
         print(f"📥 PACK response: {response.status_code}")
         if response.status_code == 200:
@@ -671,101 +691,167 @@ def attempt_authorize_pack(task_id, lines):
         print(f"❌ Error authorizing pack for task {task_id}: {str(e)}")
         return False, False
 
+# === CRITICAL NEW HELPER FUNCTION FOR MERGING AND CLEANING SHIP LINES ===
+def _merge_and_clean_ship_lines(original_order_lines, raw_packed_lines):
+    """
+    Merges original order lines (for SaleLineID) with raw packed lines (for LocationID),
+    and strips the line item down to the minimalist fields required for SHIP authorization.
+    """
+    
+    # 1. Create a map of original lines for quick lookup by ProductID
+    original_line_map = {}
+    
+    # DEBUG: Log the input to confirm the fix works
+    print(f"DEBUG: Starting SaleLineID merge. Original order line count: {len(original_order_lines)}")
+
+    for line in original_order_lines:
+        prod_id = line.get("ProductID")
+        sale_line_id = line.get("SaleLineID") # Safely get the ID
+        
+        # Check 1: Must have a valid ProductID
+        if not prod_id or prod_id == "00000000-0000-0000-0000-000000000000":
+            continue
+            
+        # Check 2: Must have a valid SaleLineID 
+        if not sale_line_id or sale_line_id == "00000000-0000-0000-0000-000000000000":
+            # This is the line that was being triggered previously
+            continue
+            
+        if prod_id not in original_line_map:
+            original_line_map[prod_id] = []
+        
+        # Store the essential data for merging
+        original_line_map[prod_id].append({
+            "SaleLineID": sale_line_id,
+            "Quantity": float(line.get("Quantity", 0) or 0),
+            "consumed_qty": 0.0 # Track how much of this original line has been fulfilled
+        })
+
+    if not original_line_map:
+        print("❌ SHIP preparation failed: The original_line_map is empty. SaleLineID is still missing from ALL required order lines.")
+        return []
+
+    final_ship_lines = []
+    
+    # 2. Iterate through the packed lines and merge data
+    for packed_line in raw_packed_lines:
+        prod_id = packed_line.get("ProductID")
+        packed_qty = float(packed_line.get("Quantity", 0) or 0)
+        location_id = packed_line.get("LocationID")
+        
+        if not prod_id or not location_id or packed_qty <= 0:
+            continue
+            
+        if prod_id in original_line_map:
+            # Find an original line item to assign this packed quantity to
+            for original_line in original_line_map[prod_id]:
+                remaining_qty = original_line["Quantity"] - original_line["consumed_qty"]
+                
+                # If there's quantity left to assign on this original line
+                if remaining_qty > 0:
+                    # Quantity to ship for this SaleLineID is the minimum of
+                    # the packed quantity and the remaining quantity on the original line
+                    qty_to_ship = min(packed_qty, remaining_qty)
+                    
+                    if qty_to_ship > 0:
+                        final_ship_lines.append({
+                            "SaleLineID": original_line["SaleLineID"], # <-- CRITICAL FIX: SALE LINE ID
+                            "ProductID": prod_id,
+                            "Quantity": qty_to_ship,
+                            "LocationID": location_id # <-- REQUIRED FIX: LOCATION ID
+                            # Minimalist fields only
+                        })
+                        
+                        # Update consumed quantities for tracking
+                        original_line["consumed_qty"] += qty_to_ship
+                        packed_qty -= qty_to_ship # Reduce remaining packed quantity to assign
+                        
+                        if packed_qty <= 0:
+                            break # All of this packed line is assigned
+        # else: debug log removed
+
+    if not final_ship_lines:
+        print("❌ SHIP preparation failed: Could not merge SaleLineID with packed lines (final list is empty).")
+
+    return final_ship_lines
+# === END NEW HELPER FUNCTION ===
+
+
+
 def authorize_ship(
     task_id,
     tracking_number,
     tracking_url,
     shipping_address,
-    lines,                      # kept for signature compatibility (NOT used)
+    lines,
     box_name,
     carrier,
     raw_pack_lines_from_core=None,
     original_order_lines=None,
 ):
     """
-    Authorize shipping for an order via /sale/fulfilment/ship.
+    Authorize shipping for an order.
 
-    MUST match Cin7 SUCCESS payload shape:
-    {
-      "TaskID": "...",
-      "Status": "AUTHORISED",
-      "RequireBy": null,
-      "ShippingAddress": { ... },
-      "ShippingNotes": "",
-      "Lines": [
-        {
-          "ShipmentDate": "YYYY-MM-DDT00:00:00",
-          "Carrier": "FedEx International Delivery",
-          "Box": "1",
-          "TrackingNumber": "",
-          "TrackingURL": "",
-          "IsShipped": true
-        }
-      ]
-    }
+    This mirrors the legacy PHP behaviour:
+      - POST /ExternalApi/v2/sale/fulfilment/ship
+      - Shipment-level only (no item lines, no SaleLineID)
+      - Single box "Box 1"
+      - Uses ShipBy and Carrier from Core
     """
-
-    print(f"🐛 DEBUG authorize_ship args:")
-    print(f"  - carrier type: {type(carrier)}, value: {str(carrier)[:100]}...")
-    print(f"  - lines type: {type(lines)}, len: {len(lines) if isinstance(lines, list) else 'N/A'}")
-    print(f"  - box_name: {box_name}")
-    print(f"  - tracking_number: {tracking_number}")
-    print(f"  - task_id: {task_id}")
-
     url = "https://inventory.dearsystems.com/ExternalApi/v2/sale/fulfilment/ship"
 
-    # Match Cin7 example style for ShipmentDate
-    shipment_date = datetime.now().strftime("%Y-%m-%dT00:00:00")
+    # ShipBy and Carrier should come from the sale root; we pass them via
+    # the shipping_address dict before calling this function.
+    ship_by = shipping_address.get("ShipBy")
+    core_carrier = shipping_address.get("Carrier") or carrier
 
-    # Make sure box is a string ("1")
-    box_value = str(box_name or "1")
+    # Fallback for ShipmentDate if ShipBy is missing
+    if ship_by:
+        # Core uses full datetime; we can safely pass date part or full string
+        shipment_date = ship_by
+    else:
+        shipment_date = datetime.now().strftime("%Y-%m-%d")
 
-    # IMPORTANT: shipment line has NO nested "Lines" of items
     shipment_line = {
         "ShipmentDate": shipment_date,
-        "Carrier": carrier,                           # e.g. "FedEx International Delivery"
-        "Box": box_value,
-        "TrackingNumber": str(tracking_number or ""),
+        "Carrier": core_carrier,
+        # IMPORTANT: PHP sends literal "Box 1"
+        "Box": "Box 1",
+        "TrackingNumber": tracking_number,
         "TrackingURL": tracking_url or "",
         "IsShipped": True,
-    }
-
-    # Build shipping address exactly once
-    shipping_address_payload = {
-        "DisplayAddressLine1": shipping_address.get("DisplayAddressLine1", ""),
-        "DisplayAddressLine2": shipping_address.get("DisplayAddressLine2", ""),
-        "Line1": shipping_address.get("Line1", ""),
-        "Line2": shipping_address.get("Line2", ""),
-        "City": shipping_address.get("City", ""),
-        "State": shipping_address.get("State", ""),
-        "Postcode": shipping_address.get("Postcode", ""),
-        "Country": shipping_address.get("Country", ""),
-        "Company": shipping_address.get("Company", ""),
-        "Contact": shipping_address.get("Contact", ""),
-        "ShipToOther": shipping_address.get("ShipToOther", False),
-        "ShippingNotes": shipping_address.get("ShippingNotes", ""),
     }
 
     payload = {
         "TaskID": task_id,
         "Status": "AUTHORISED",
-        "RequireBy": None,  # matches Cin7 SUCCESS example
-        "ShippingAddress": shipping_address_payload,
-        "ShippingNotes": shipping_address.get(
-            "ShippingNotes", f"InPost tracking: {tracking_number}"
-        ),
-        "Lines": [shipment_line],   # ⬅ ONLY shipment headers, NO nested item lines
+        # PHP sends null RequireBy
+        "RequireBy": None,
+        "ShippingAddress": {
+            "DisplayAddressLine1": shipping_address.get("DisplayAddressLine1", ""),
+            "DisplayAddressLine2": shipping_address.get("DisplayAddressLine2", ""),
+            "Line1": shipping_address.get("Line1", ""),
+            "Line2": shipping_address.get("Line2", ""),
+            "City": shipping_address.get("City", ""),
+            "State": shipping_address.get("State", ""),
+            "Postcode": shipping_address.get("Postcode", ""),
+            "Country": shipping_address.get("Country", ""),
+            "Company": shipping_address.get("Company", ""),
+            "Contact": shipping_address.get("Contact", ""),
+            "ShipToOther": shipping_address.get("ShipToOther", False),
+        },
+        # Exactly like PHP: use ShippingNotes from Core if present
+        "ShippingNotes": shipping_address.get("ShippingNotes", ""),
+        "Lines": [shipment_line],
     }
 
-    print("\n📤 FINAL SHIP PAYLOAD (NO nested Lines):")
-    print(json.dumps(payload, indent=2))
+    print(f"📤 SHIP payload (PHP-style): {json.dumps(payload, indent=2)}")
 
     try:
-        response = dear_request("PUT", url, headers=core_headers, json=payload)
-        print(f"📥 SHIP response: {response.status_code} – {response.text}")
-
+        response = dear_request("POST", url, headers=core_headers, json=payload)
+        print(f"📥 SHIP response: {response.status_code} - {response.text}")
         if response.status_code == 200:
-            print("✅ SHIP AUTHORIZED | HTTP 200")
+            print(f"✅ SHIP AUTHORIZED | HTTP {response.status_code}")
             return True
         elif response.status_code == 400:
             error_text = response.text.lower()
@@ -781,9 +867,8 @@ def authorize_ship(
                     pass
                 return False
         else:
-            print(f"❌ Unexpected status code: {response.status_code} - {response.text}")
+            print(f"❌ Unexpected SHIP status: {response.status_code} - {response.text}")
             return False
-
     except requests.exceptions.HTTPError as e:
         print(f"❌ HTTP Error authorizing ship for task {task_id}: {e}")
         return False
@@ -792,12 +877,11 @@ def authorize_ship(
         return False
 
 
-
 def process_fulfillment(data, sale_id, tracking_number, tracking_url):
     """Process all fulfillment steps (PICK, PACK, SHIP) for an order."""
     order_data = data["Order"]
     sale_task_id = data["ID"]
-    lines = order_data.get("Lines", []) # Get original order lines
+    lines = order_data.get("Lines", []) # Get original order lines (contains SaleLineID, hopefully now)
     shipping = data.get("ShippingAddress", {})
     
     # Unpack the new return value
@@ -864,6 +948,7 @@ def process_fulfillment(data, sale_id, tracking_number, tracking_url):
         pack_success = True
     
     # Choose the lines to use for SHIP: prefer exact packed lines from Core if available
+    # NOTE: ship_lines here is ONLY used for pre-flight log, not the payload construction
     ship_lines = packed_lines_from_core if packed_lines_from_core else pack_lines
     
     # Pre-flight log: compare order lines vs ship lines and print ship lines for debugging
@@ -892,13 +977,32 @@ def process_fulfillment(data, sale_id, tracking_number, tracking_url):
     country = (shipping or {}).get("Country", "")
     computed_carrier = "Kurier InPost - ShipX" if country == "Poland" else "FedEx"
     
+    
     if (pick_done or pick_success) and (pack_done or pack_success):
         print("🔄 Attempting SHIP authorization...")
-        # Add a small delay to allow potential internal state updates in Dear
+        # Small delay to let Dear/Cin7 internal state settle
         print("⏳ Waiting 2 seconds before attempting SHIP authorization...")
         time.sleep(2)
-        # Pass the original order lines as well for comparison inside authorize_ship
-        if not authorize_ship(task_id_to_use, tracking_number, tracking_url, shipping, ship_lines, pack_box_name, computed_carrier, raw_pack_lines_from_core, lines):
+
+        # We no longer try to send item-level lines for SHIP – Dear only needs
+        # shipment-level info here. Item quantities are governed by PACK.
+
+        # shipping is your ShippingAddress dict from Core
+        shipping["ShipBy"] = data.get("ShipBy")
+        shipping["Carrier"] = data.get("Raw", {}).get("Carrier")
+        shipping["ShippingNotes"] = data.get("Raw", {}).get("ShippingNotes", "")
+
+        if not authorize_ship(
+            task_id_to_use,
+            tracking_number,
+            tracking_url,
+            shipping,
+            [],  # item lines not required for SHIP
+            pack_box_name,
+            computed_carrier,
+            raw_pack_lines_from_core,
+            lines,
+        ):
             print("❌ SHIP authorization failed")
             success = False
         else:
@@ -906,8 +1010,9 @@ def process_fulfillment(data, sale_id, tracking_number, tracking_url):
     else:
         print("⏭️  Skipping SHIP due to PICK/PACK not being ready")
         success = False
-    
-    return success
+
+
+        return success
 
 
 def get_recent_sale_ids(days_back=1):
@@ -930,27 +1035,47 @@ def get_recent_sale_ids(days_back=1):
         print(f"❌ Error fetching recent sales: {str(e)}")
         return []
 
+
 def update_tracking_in_core(sale_id, tracking_number, tracking_url):
-    """Update tracking information in Core."""
+    """Update tracking information in Core (mirror legacy PHP).
+
+    PHP calls:
+      PUT /ExternalApi/v2/sale/{SaleID}/fulfilment/ship
+      Body: { "trackingNumber": "...", "trackingURL": "..." }
+    """
     url = f"https://inventory.dearsystems.com/ExternalApi/v2/sale/{sale_id}/fulfilment/ship"
+
     payload = {
         "trackingNumber": tracking_number,
-        "trackingURL": tracking_url or ""
+        "trackingURL": tracking_url or "",
     }
-    
+
+    print(f"📤 Updating tracking in Core via: {url}")
+    print(f"📤 Tracking payload: {json.dumps(payload, indent=2)}")
+
     try:
-        response = dear_request("PUT", url, json=payload)
+        response = dear_request("PUT", url, headers=core_headers, json=payload)
         if response.status_code == 200:
             print(f"✅ Successfully updated tracking in Core: {tracking_number}")
             return True
         else:
-            print(f"❌ Failed to update tracking in Core: {response.status_code} - {response.text}")
+            print(
+                f"❌ Failed to update tracking in Core: "
+                f"{response.status_code} - {response.text}"
+            )
+            try:
+                error_details = response.json()
+                print(f"📝 Tracking update error details: {json.dumps(error_details, indent=2)}")
+            except Exception:
+                pass
             return False
     except Exception as e:
         print(f"❌ Error updating tracking in Core: {str(e)}")
         return False
 
+
 def validate_order_for_inpost(data):
+
     """Validate order data before sending to InPost"""
     order_data = data["Order"]
     shipping = data.get("ShippingAddress", {})
@@ -982,15 +1107,29 @@ SALE_IDS = get_recent_sale_ids(1)
 for sale_id in SALE_IDS:
     data = get_core_sale(sale_id)
     
+    # CRITICAL FIX 1: Stop immediately if data fetching failed
     if not data or "Order" not in data:
         print(f"❌ Failed to retrieve valid data for sale {sale_id}")
         continue
         
-    order_number = data["Order"]["SaleOrderNumber"]
+    order_data = data["Order"]
+    
+    # 🔥 FINAL FIX: Safely retrieve SaleOrderNumber. Default to "" if missing.
+    order_number = order_data.get("SaleOrderNumber", "") 
+    
+    if not order_number:
+        print(f"❌ Sale Order Number not found in Core data for sale {sale_id}. Skipping.")
+        continue
+    
     task_id = data["ID"]
-    lines = data["Order"].get("Lines", [])
-    shipping = data.get("ShippingAddress", {})
-    carrier = "Kurier InPost - ShipX" if shipping.get("Country") == "Poland" else "FedEx"
+    lines = order_data.get("Lines", []) # Use order_data directly
+    
+    # CRITICAL FIX 2: Safely access ShippingAddress. It should be a dict if the function above worked.
+    shipping = data.get("ShippingAddress", {}) or {} 
+    
+    # Use .get("Country") on the safe shipping dictionary
+    country = shipping.get("Country", "") 
+    carrier = "Kurier InPost - ShipX" if country == "Poland" else "FedEx"
     ship_by = data.get("ShipBy", "")
 
     print(f"\n🔄 Processing Core Sale: {order_number}")
@@ -1023,10 +1162,6 @@ for sale_id in SALE_IDS:
         continue
 
     print("✅ InPost marked as sent. Proceeding to complete in Core...")
-
-    # tracking_info = inpost_order[0].get("externalDeliveryIds", [{}])[0].get("operators_data", [{}])[0]
-    # tracking_number = tracking_info.get("package_id", "")
-    # tracking_url = tracking_info.get("tracking_url", "")
 
     # Get tracking info with better error handling
     inpost_order_data = inpost_order[0] if inpost_order else {}

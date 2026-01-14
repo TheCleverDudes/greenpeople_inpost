@@ -22,4 +22,4 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Run sync
-        run: python new_updated_void_sale.py
+        run: python new_updated_void_sale_FIXED.py
